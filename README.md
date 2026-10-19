@@ -74,7 +74,7 @@ There is no installer, and nothing is written outside your user profile.
 ## Build from source
 
 ```powershell
-git clone https://github.com/<owner>/ScanEzi.git
+git clone https://github.com/docfaii/ScanEzi.git
 cd ScanEzi
 dotnet build -c Release
 dotnet run -c Release
