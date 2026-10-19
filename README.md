@@ -117,10 +117,6 @@ for the scanner list:
   <img src="docs/settings.png" width="820" alt="Settings panel">
 </p>
 
-<p align="center">
-  <img src="docs/preview.png" width="820" alt="Page preview with crop and rotate">
-</p>
-
 ## How empty pages are detected
 
 A duplex scan of a single-sided sheet gives one good frame and one frame the sensor never exposed.

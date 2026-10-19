@@ -155,6 +155,23 @@ namespace ScanEzi
                 : Visibility.Visible;
         }
 
+        private void RepoLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                ScanLog.Write($"Failed to open repository link: {ex.Message}");
+            }
+
+            e.Handled = true;
+        }
+
         private async void ScannerComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_uiReady) return;
@@ -651,10 +668,14 @@ namespace ScanEzi
 
             if (_scannedImages.Count == 0)
             {
-                ThumbnailPanel.Children.Add(EmptyPlaceholder);
+                EmptyPlaceholder.Visibility = Visibility.Visible;
+                GalleryScroll.Visibility = Visibility.Collapsed;
                 UpdateSaveButtonState();
                 return;
             }
+
+            EmptyPlaceholder.Visibility = Visibility.Collapsed;
+            GalleryScroll.Visibility = Visibility.Visible;
 
             for (int i = 0; i < _scannedImages.Count; i++)
             {
@@ -667,12 +688,14 @@ namespace ScanEzi
                     Height = _settings.ThumbnailHeight,
                     Margin = new Thickness(8),
                     CornerRadius = new CornerRadius(6),
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0)),
                     BorderThickness = new Thickness(1),
-                    Background = Brushes.White,
                     Tag = img,
                     Cursor = System.Windows.Input.Cursors.Hand
                 };
+
+                // Set through resource references so the gallery follows the light/dark theme.
+                border.SetResourceReference(Border.BackgroundProperty, "ControlFillColorDefaultBrush");
+                border.SetResourceReference(Border.BorderBrushProperty, "ControlStrokeColorDefaultBrush");
 
                 var stack = new Grid();
 

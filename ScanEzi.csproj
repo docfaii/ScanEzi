@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\ScanEzi.ico" />
+    <Resource Include="Assets\ScanEzi-logo.png" />
   </ItemGroup>
 
   <ItemGroup>

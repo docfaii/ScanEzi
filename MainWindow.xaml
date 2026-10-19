@@ -15,8 +15,29 @@
         <Style x:Key="SettingLabel" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="2,0,0,6"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+        </Style>
+
+        <!-- Small caps heading that opens each group of settings. -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Hairline that runs from a section heading to the panel edge. -->
+        <Style x:Key="SectionRule" TargetType="Border">
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Margin" Value="10,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+        </Style>
+
+        <!-- Keeps a toggle switch on the same 34 px baseline as the combo boxes. -->
+        <Style x:Key="ToggleRow" TargetType="Grid">
+            <Setter Property="Height" Value="34"/>
         </Style>
 
         <Style x:Key="BadgeText" TargetType="TextBlock">
@@ -44,53 +65,61 @@
         </Grid.RowDefinitions>
 
         <!-- Title bar -->
-        <ui:TitleBar Grid.Row="0" Title="ScanEzi" />
+        <ui:TitleBar Grid.Row="0" Title="ScanEzi">
+            <ui:TitleBar.Icon>
+                <ui:ImageIcon Width="18" Height="18" Source="pack://application:,,,/Assets/ScanEzi-logo.png" />
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
 
         <!-- Command bar: active device + settings + primary action -->
-        <Grid Grid.Row="1" Margin="24,4,24,12">
+        <Grid Grid.Row="1" Margin="24,8,24,12">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <!-- Active device -->
-                <ui:Card Padding="12,6" Margin="0,0,12,0" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE729;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <TextBlock x:Name="ActiveDeviceText" Text="Searching for scanners..."
-                                   FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="280"/>
-                    </StackPanel>
-                </ui:Card>
-
-                <ui:Button x:Name="SettingsToggleButton" Appearance="Secondary" ToolTip="Device and scan settings"
-                           Click="SettingsToggleButton_Click" Padding="9,6" Margin="0,0,16,0">
-                    <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                </ui:Button>
-
-                <!-- Active settings summary -->
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Style="{StaticResource BadgeBorder}">
-                        <TextBlock x:Name="PaperSizeBadge" Style="{StaticResource BadgeText}" Text="Size: A4"/>
-                    </Border>
-                    <Border Style="{StaticResource BadgeBorder}">
-                        <TextBlock x:Name="DuplexBadge" Style="{StaticResource BadgeText}" Text="Sides: 1-Sided"/>
-                    </Border>
-                    <Border Style="{StaticResource BadgeBorder}">
-                        <TextBlock x:Name="SourceBadge" Style="{StaticResource BadgeText}" Text="Source: Auto Detect"/>
-                    </Border>
-                    <Border Style="{StaticResource BadgeBorder}">
-                        <TextBlock x:Name="FormatBadge" Style="{StaticResource BadgeText}" Text="Save: PDF"/>
-                    </Border>
+            <!-- Active device -->
+            <ui:Card Grid.Column="0" Padding="12,7" Margin="0,0,10,0" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE729;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="ActiveDeviceText" Text="Searching for scanners..."
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="280"/>
                 </StackPanel>
-            </StackPanel>
+            </ui:Card>
 
-            <ui:Button Grid.Column="1" x:Name="QuickScanButton" Appearance="Primary"
-                       Content="Scan Now" Height="36" Padding="20,0" Click="ScanButton_Click"/>
+            <ui:Button Grid.Column="1" x:Name="SettingsToggleButton" Appearance="Secondary"
+                       ToolTip="Device and scan settings"
+                       Width="36" Height="36" Padding="0" Margin="0,0,16,0"
+                       VerticalAlignment="Center"
+                       Click="SettingsToggleButton_Click">
+                <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+            </ui:Button>
+
+            <!-- Active settings summary, wraps rather than clips on narrow windows -->
+            <WrapPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Style="{StaticResource BadgeBorder}">
+                    <TextBlock x:Name="PaperSizeBadge" Style="{StaticResource BadgeText}" Text="Size: A4"/>
+                </Border>
+                <Border Style="{StaticResource BadgeBorder}">
+                    <TextBlock x:Name="DuplexBadge" Style="{StaticResource BadgeText}" Text="Sides: 1-Sided"/>
+                </Border>
+                <Border Style="{StaticResource BadgeBorder}">
+                    <TextBlock x:Name="SourceBadge" Style="{StaticResource BadgeText}" Text="Source: Auto Detect"/>
+                </Border>
+                <Border Style="{StaticResource BadgeBorder}">
+                    <TextBlock x:Name="FormatBadge" Style="{StaticResource BadgeText}" Text="Save: PDF"/>
+                </Border>
+            </WrapPanel>
+
+            <ui:Button Grid.Column="3" x:Name="QuickScanButton" Appearance="Primary"
+                       Content="Scan Now" Height="36" Padding="20,0" Margin="16,0,0,0"
+                       VerticalAlignment="Center" Click="ScanButton_Click"/>
         </Grid>
 
         <!-- Inline status banner + collapsible settings panel -->
@@ -121,134 +150,190 @@
             </Border>
 
             <ui:Card x:Name="SettingsPanel" Padding="20,16" Visibility="Collapsed">
-            <StackPanel>
-                <WrapPanel>
-                    <StackPanel Width="258" Margin="0,0,16,0">
-                        <TextBlock Text="Scanner" Style="{StaticResource SettingLabel}"/>
+                <StackPanel>
+                    <!-- Capture group: what to scan and from where -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="CAPTURE" Style="{StaticResource SectionLabel}"/>
+                        <Border Grid.Column="1" Style="{StaticResource SectionRule}"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                            <TextBlock Text="Scanner" Style="{StaticResource SettingLabel}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <ComboBox x:Name="ScannerComboBox" Grid.Column="0" Height="34"
+                                          VerticalContentAlignment="Center"
+                                          SelectionChanged="ScannerComboBox_SelectionChanged">
+                                    <ComboBoxItem Content="Searching for scanners..." IsSelected="True"/>
+                                </ComboBox>
+
+                                <ui:Button x:Name="RefreshScannerButton" Grid.Column="1" Appearance="Secondary"
+                                           Width="34" Height="34" Padding="0" Margin="8,0,0,0"
+                                           ToolTip="Refresh scanner list"
+                                           Click="RefreshScannerButton_Click">
+                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                                </ui:Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Margin="0,0,20,0">
+                            <TextBlock Text="Page size" Style="{StaticResource SettingLabel}"/>
+                            <ComboBox x:Name="PaperSizeComboBox" Height="34" VerticalContentAlignment="Center"
+                                      SelectionChanged="PaperSizeComboBox_SelectionChanged">
+                                <ComboBoxItem Content="A4" IsSelected="True"/>
+                                <ComboBoxItem Content="Letter"/>
+                                <ComboBoxItem Content="Legal"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Margin="0,0,20,0">
+                            <TextBlock Text="Sides" Style="{StaticResource SettingLabel}"/>
+                            <ComboBox x:Name="DuplexComboBox" Height="34" VerticalContentAlignment="Center"
+                                      SelectionChanged="DuplexComboBox_SelectionChanged">
+                                <ComboBoxItem Content="1-Sided (Simplex)" IsSelected="True"/>
+                                <ComboBoxItem Content="2-Sided (Duplex)"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="Source" Style="{StaticResource SettingLabel}"/>
+                            <ComboBox x:Name="SourceComboBox" Height="34" VerticalContentAlignment="Center"
+                                      SelectionChanged="SourceComboBox_SelectionChanged">
+                                <ComboBoxItem Content="Auto Detect" IsSelected="True"/>
+                                <ComboBoxItem Content="Document Feeder"/>
+                                <ComboBoxItem Content="Flatbed"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Output group: how the pages are written and cleaned up -->
+                    <Grid Margin="0,18,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="OUTPUT" Style="{StaticResource SectionLabel}"/>
+                        <Border Grid.Column="1" Style="{StaticResource SectionRule}"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                            <TextBlock Text="Save as" Style="{StaticResource SettingLabel}"/>
+                            <ComboBox x:Name="FormatComboBox" Height="34" VerticalContentAlignment="Center"
+                                      SelectionChanged="FormatComboBox_SelectionChanged">
+                                <ComboBoxItem Content="PDF document" IsSelected="True"/>
+                                <ComboBoxItem Content="JPG images"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Margin="0,0,20,0">
+                            <TextBlock Text="Empty pages" Style="{StaticResource SettingLabel}"/>
+                            <Grid Style="{StaticResource ToggleRow}">
+                                <ui:ToggleSwitch x:Name="DiscardBlankToggle" IsChecked="True"
+                                                 OnContent="Discard" OffContent="Keep"
+                                                 MinWidth="0" HorizontalAlignment="Left"
+                                                 VerticalAlignment="Center"
+                                                 Checked="DiscardBlankToggle_Changed"
+                                                 Unchecked="DiscardBlankToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Auto orientation" Style="{StaticResource SettingLabel}"/>
+                            <Grid Style="{StaticResource ToggleRow}">
+                                <ui:ToggleSwitch x:Name="AutoOrientToggle" IsChecked="True"
+                                                 OnContent="On" OffContent="Off"
+                                                 MinWidth="0" HorizontalAlignment="Left"
+                                                 VerticalAlignment="Center"
+                                                 Checked="AutoOrientToggle_Changed"
+                                                 Unchecked="AutoOrientToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Margin="0,16,0,0" Padding="0,12,0,0"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
 
-                            <ComboBox x:Name="ScannerComboBox" Grid.Column="0" Height="34"
-                                      VerticalContentAlignment="Center"
-                                      SelectionChanged="ScannerComboBox_SelectionChanged">
-                                <ComboBoxItem Content="Searching for scanners..." IsSelected="True"/>
-                            </ComboBox>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                <TextBlock Text="Settings are saved automatically" FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
 
-                            <ui:Button x:Name="RefreshScannerButton" Grid.Column="1" Appearance="Secondary"
-                                       Height="34" Padding="10,0" Margin="6,0,0,0"
-                                       ToolTip="Refresh scanner list"
-                                       Click="RefreshScannerButton_Click">
-                                <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                            </ui:Button>
+                            <TextBlock x:Name="CapabilityText" Grid.Column="1" Text=""
+                                       FontSize="11" Margin="16,0,0,0"
+                                       TextAlignment="Right" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
                         </Grid>
-                    </StackPanel>
-
-                    <StackPanel Width="120" Margin="0,0,16,0">
-                        <TextBlock Text="Page Size" Style="{StaticResource SettingLabel}"/>
-                        <ComboBox x:Name="PaperSizeComboBox" Height="34" VerticalContentAlignment="Center"
-                                  SelectionChanged="PaperSizeComboBox_SelectionChanged">
-                            <ComboBoxItem Content="A4" IsSelected="True"/>
-                            <ComboBoxItem Content="Letter"/>
-                            <ComboBoxItem Content="Legal"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Width="150" Margin="0,0,16,0">
-                        <TextBlock Text="Sides" Style="{StaticResource SettingLabel}"/>
-                        <ComboBox x:Name="DuplexComboBox" Height="34" VerticalContentAlignment="Center"
-                                  SelectionChanged="DuplexComboBox_SelectionChanged">
-                            <ComboBoxItem Content="1-Sided (Simplex)" IsSelected="True"/>
-                            <ComboBoxItem Content="2-Sided (Duplex)"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Width="150" Margin="0,0,16,0">
-                        <TextBlock Text="Source" Style="{StaticResource SettingLabel}"/>
-                        <ComboBox x:Name="SourceComboBox" Height="34" VerticalContentAlignment="Center"
-                                  SelectionChanged="SourceComboBox_SelectionChanged">
-                            <ComboBoxItem Content="Auto Detect" IsSelected="True"/>
-                            <ComboBoxItem Content="Document Feeder"/>
-                            <ComboBoxItem Content="Flatbed"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Width="170">
-                        <TextBlock Text="Save as" Style="{StaticResource SettingLabel}"/>
-                        <ComboBox x:Name="FormatComboBox" Height="34" VerticalContentAlignment="Center"
-                                  SelectionChanged="FormatComboBox_SelectionChanged">
-                            <ComboBoxItem Content="PDF document" IsSelected="True"/>
-                            <ComboBoxItem Content="JPG images"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Width="190" Margin="16,0,0,0">
-                        <TextBlock Text="Empty pages" Style="{StaticResource SettingLabel}"/>
-                        <ui:ToggleSwitch x:Name="DiscardBlankToggle" IsChecked="True"
-                                         OnContent="Discard" OffContent="Keep"
-                                         MinWidth="0" Margin="0,6,0,0"
-                                         HorizontalAlignment="Left"
-                                         Checked="DiscardBlankToggle_Changed"
-                                         Unchecked="DiscardBlankToggle_Changed"/>
-                    </StackPanel>
-
-                    <StackPanel Width="190" Margin="16,0,0,0">
-                        <TextBlock Text="Auto orientation" Style="{StaticResource SettingLabel}"/>
-                        <ui:ToggleSwitch x:Name="AutoOrientToggle" IsChecked="True"
-                                         OnContent="On" OffContent="Off"
-                                         MinWidth="0" Margin="0,6,0,0"
-                                         HorizontalAlignment="Left"
-                                         Checked="AutoOrientToggle_Changed"
-                                         Unchecked="AutoOrientToggle_Changed"/>
-                    </StackPanel>
-                </WrapPanel>
-
-                <StackPanel Margin="0,14,0,0">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="12"
-                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Saved automatically" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <TextBlock Text="Changes apply to your next scan and are remembered."
-                               TextWrapping="Wrap" FontSize="11" Margin="0,4,0,0"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
-                    <TextBlock x:Name="CapabilityText" Text=""
-                               TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                    </Border>
                 </StackPanel>
-            </StackPanel>
-        </ui:Card>
+            </ui:Card>
         </StackPanel>
 
         <!-- Thumbnail workspace -->
-        <ui:Card Grid.Row="3" Margin="24,0,24,12" Padding="0">
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <WrapPanel x:Name="ThumbnailPanel" Margin="16">
-                    <Border x:Name="EmptyPlaceholder" Width="320" Height="220" CornerRadius="8"
-                            Background="{DynamicResource ControlFillColorDefaultBrush}"
-                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                            BorderThickness="1" HorizontalAlignment="Center" Margin="20">
-                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="44"
-                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                       HorizontalAlignment="Center" Margin="0,0,0,14"/>
-                            <TextBlock Text="No scans yet" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                                       HorizontalAlignment="Center"/>
-                            <TextBlock Text="Press Scan Now to capture a page" FontSize="12"
-                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                       HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                            <TextBlock Text="Click a page to preview, crop or rotate it" FontSize="12"
-                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                       HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </WrapPanel>
-            </ScrollViewer>
-        </ui:Card>
+        <Border Grid.Row="3" Margin="24,0,24,12" CornerRadius="8"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1">
+            <Grid>
+                <ScrollViewer x:Name="GalleryScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <WrapPanel x:Name="ThumbnailPanel" Margin="12"/>
+                </ScrollViewer>
+
+                <Border x:Name="EmptyPlaceholder" Width="340" Height="230" CornerRadius="8"
+                        Background="{DynamicResource ControlFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="&#xE8B9;" FontFamily="Segoe MDL2 Assets" FontSize="44"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                        <TextBlock Text="No scans yet" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="Press Scan Now to capture a page" FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Text="Click a page to preview, crop or rotate it" FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
 
         <!-- Footer -->
         <Border Grid.Row="4" Padding="24,0,24,16">
@@ -256,15 +341,27 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBlock x:Name="StatusText" Text="Ready" VerticalAlignment="Center"
-                           FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                           FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,16,0"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <ui:Button x:Name="SaveButton" Content="Save as PDF..." Appearance="Primary"
-                               Click="SaveButton_Click" Padding="18,7" IsEnabled="False"/>
-                </StackPanel>
+                <TextBlock Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center"
+                           FontSize="12" Margin="16,0"
+                           AutomationProperties.AutomationId="RepoLink"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                    <Hyperlink NavigateUri="https://github.com/docfaii/ScanEzi"
+                               RequestNavigate="RepoLink_RequestNavigate"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               TextDecorations="None">
+                        Made by docfaii
+                    </Hyperlink>
+                </TextBlock>
+
+                <ui:Button Grid.Column="2" x:Name="SaveButton" Content="Save as PDF..." Appearance="Primary"
+                           HorizontalAlignment="Right" Click="SaveButton_Click" Padding="18,7" IsEnabled="False"/>
             </Grid>
         </Border>
     </Grid>
