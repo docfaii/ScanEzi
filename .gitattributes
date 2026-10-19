@@ -1,0 +1,13 @@
+# Normalise line endings so the working tree stays CRLF on Windows checkouts
+# while the repository stores LF.
+* text=auto
+
+*.cs       text diff=csharp
+*.xaml     text
+*.md       text
+*.ps1      text
+*.json     text
+*.csproj   text
+
+*.png      binary
+*.ico      binary
