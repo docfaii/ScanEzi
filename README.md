@@ -13,6 +13,7 @@
   <img alt=".NET" src="https://img.shields.io/badge/.NET-8.0-512BD4">
   <img alt="UI" src="https://img.shields.io/badge/UI-WPF--UI%20Fluent-5C2D91">
   <img alt="Licence" src="https://img.shields.io/badge/licence-MIT-2EA043">
+  <a href="https://github.com/docfaii/ScanEzi/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/docfaii/ScanEzi?color=2EA043"></a>
 </p>
 
 ---
