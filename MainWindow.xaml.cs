@@ -20,9 +20,13 @@ namespace ScanEzi
         private readonly ScannerButtonService _buttonService = new();
         private readonly ImageProcessor _imageProcessor = new();
         private AppSettings _settings;
+        private readonly UpdateService _updateService = new();
         private IReadOnlyList<DeviceInformation> _availableScanners = new List<DeviceInformation>();
         private bool _uiReady;
         private bool _applyingSettings;
+        private bool _checkingForUpdates;
+        private UpdateInfo? _pendingUpdate;
+        private string? _preparedUpdatePath;
 
         /// <summary>
         /// The sides preference the user chose, independent of whether the currently
@@ -38,6 +42,9 @@ namespace ScanEzi
             _preferredDuplex = _settings.DefaultDuplex;
             _uiReady = true;
 
+            VersionText.Text = $"ScanEzi {UpdateService.CurrentVersion}";
+            UpdateStatusText.Text = "Updates are checked against GitHub Releases.";
+
             Loaded += async (s, e) =>
             {
                 ApplyLoadedSettings();
@@ -48,6 +55,11 @@ namespace ScanEzi
                 _buttonService.StatusChanged += OnButtonServiceStatusChanged;
                 _buttonService.Initialize(Dispatcher, OnHardwareScanButtonPressed);
                 await _buttonService.StartAsync();
+
+                if (_settings.AutoUpdate)
+                {
+                    await CheckForUpdatesAsync(manual: false);
+                }
             };
 
             Closed += (s, e) =>
@@ -98,6 +110,7 @@ namespace ScanEzi
 
                 DiscardBlankToggle.IsChecked = _settings.DiscardBlankPages;
                 AutoOrientToggle.IsChecked = _settings.AutoOrientPages;
+                AutoUpdateToggle.IsChecked = _settings.AutoUpdate;
 
                 foreach (ComboBoxItem item in SourceComboBox.Items)
                 {
@@ -349,6 +362,150 @@ namespace ScanEzi
         {
             SaveButton.Content = IsPdfOutput ? "Save as PDF..." : "Save Images...";
             FormatBadge.Text = "Save: " + (IsPdfOutput ? "PDF" : "JPG");
+        }
+
+        private void AutoUpdateToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            if (!_uiReady || _applyingSettings) return;
+            _settings.AutoUpdate = AutoUpdateToggle.IsChecked == true;
+            _settings.Save();
+        }
+
+        private async void CheckForUpdatesButton_Click(object sender, RoutedEventArgs e) =>
+            await CheckForUpdatesAsync(manual: true);
+
+        /// <summary>
+        /// Looks for a newer release. Automatic checks stay silent unless something is found;
+        /// manual checks always report a result.
+        /// </summary>
+        private async Task CheckForUpdatesAsync(bool manual)
+        {
+            if (_checkingForUpdates) return;
+
+            // A pending update is already known, so surface its banner instead of re-checking.
+            if (_pendingUpdate != null)
+            {
+                UpdateBanner.Visibility = Visibility.Visible;
+                return;
+            }
+
+            _checkingForUpdates = true;
+            if (manual)
+            {
+                CheckForUpdatesButton.IsEnabled = false;
+                UpdateStatusText.Text = "Checking for updates...";
+            }
+
+            try
+            {
+                var update = await _updateService.CheckForUpdatesAsync();
+                if (update == null)
+                {
+                    UpdateStatusText.Text = $"You're up to date (v{UpdateService.CurrentVersion}).";
+                    if (manual)
+                    {
+                        ShowBanner(false, $"ScanEzi {UpdateService.CurrentVersion} is the latest version.");
+                    }
+                    return;
+                }
+
+                _pendingUpdate = update;
+                UpdateStatusText.Text = $"Version {update.Version} is available.";
+                UpdateBannerText.Text = $"ScanEzi {update.Version} is available. You're on {UpdateService.CurrentVersion}.";
+                UpdateNowButton.Content = "Update now";
+                UpdateNowButton.IsEnabled = true;
+                UpdateBanner.Visibility = Visibility.Visible;
+
+                if (manual)
+                {
+                    ShowBanner(false, $"ScanEzi {update.Version} is available. Use the update banner to install it.");
+                }
+
+                // Automatic checks fetch the package quietly, then wait for the user to restart.
+                if (_settings.AutoUpdate && !manual)
+                {
+                    await DownloadUpdateAsync(update);
+                }
+            }
+            catch (Exception ex)
+            {
+                ScanLog.Write($"Update check failed: {ex.Message}");
+                UpdateStatusText.Text = "Couldn't check for updates.";
+                if (manual)
+                {
+                    ShowBanner(true, $"Couldn't check for updates: {ex.Message}");
+                }
+            }
+            finally
+            {
+                _checkingForUpdates = false;
+                CheckForUpdatesButton.IsEnabled = true;
+            }
+        }
+
+        private async Task DownloadUpdateAsync(UpdateInfo update)
+        {
+            if (_preparedUpdatePath != null) return;
+
+            UpdateNowButton.IsEnabled = false;
+            UpdateStatusText.Text = $"Downloading ScanEzi {update.Version}...";
+
+            try
+            {
+                var progress = new Progress<double>(fraction =>
+                {
+                    string percent = fraction.ToString("P0");
+                    UpdateBannerText.Text = $"Downloading ScanEzi {update.Version}... {percent}";
+                    UpdateStatusText.Text = $"Downloading update... {percent}";
+                });
+
+                _preparedUpdatePath = await _updateService.DownloadAsync(update, progress);
+                UpdateBannerText.Text = $"ScanEzi {update.Version} is ready. Restart to finish installing.";
+                UpdateStatusText.Text = $"Version {update.Version} is ready to install.";
+                UpdateNowButton.Content = "Restart and update";
+                UpdateNowButton.IsEnabled = true;
+            }
+            catch (Exception ex)
+            {
+                ScanLog.Write($"Update download failed: {ex}");
+                UpdateStatusText.Text = "Update download failed.";
+                UpdateBannerText.Text = $"Couldn't download ScanEzi {update.Version}: {ex.Message}";
+                UpdateNowButton.Content = "Retry";
+                UpdateNowButton.IsEnabled = true;
+                ShowBanner(true, $"Couldn't download the update: {ex.Message}");
+            }
+        }
+
+        private async void UpdateNowButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_pendingUpdate == null) return;
+
+            if (_preparedUpdatePath == null)
+            {
+                await DownloadUpdateAsync(_pendingUpdate);
+                return;
+            }
+
+            try
+            {
+                UpdateNowButton.IsEnabled = false;
+                UpdateStatusText.Text = "Restarting to install the update...";
+                _updateService.ApplyUpdate(_preparedUpdatePath);
+                Application.Current.Shutdown();
+            }
+            catch (Exception ex)
+            {
+                ScanLog.Write($"Update install failed: {ex}");
+                UpdateNowButton.IsEnabled = true;
+                UpdateStatusText.Text = "Couldn't install the update.";
+                ShowBanner(true, $"Couldn't install the update: {ex.Message}");
+            }
+        }
+
+        private void UpdateLaterButton_Click(object sender, RoutedEventArgs e)
+        {
+            UpdateBanner.Visibility = Visibility.Collapsed;
+            UpdateStatusText.Text = $"Version {_pendingUpdate?.Version} is available \u2014 install it from Settings when ready.";
         }
 
         private void BannerCloseButton_Click(object sender, RoutedEventArgs e)

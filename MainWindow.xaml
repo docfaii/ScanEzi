@@ -122,8 +122,38 @@
                        VerticalAlignment="Center" Click="ScanButton_Click"/>
         </Grid>
 
-        <!-- Inline status banner + collapsible settings panel -->
+        <!-- Inline update banner, status banner + collapsible settings panel -->
         <StackPanel Grid.Row="2" Margin="24,0,24,12">
+            <Border x:Name="UpdateBanner" Visibility="Collapsed" CornerRadius="8"
+                    Padding="14,10" Margin="0,0,0,8" BorderThickness="1"
+                    Background="{DynamicResource SystemFillColorAttentionBackgroundBrush}"
+                    BorderBrush="{DynamicResource SystemFillColorAttentionBrush}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="&#xE896;" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                               Foreground="{DynamicResource SystemFillColorAttentionBrush}"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                    <TextBlock x:Name="UpdateBannerText" Grid.Column="1" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               VerticalAlignment="Center"/>
+
+                    <ui:Button x:Name="UpdateNowButton" Grid.Column="2" Content="Update now"
+                               Appearance="Primary" Padding="14,5" Margin="12,0,0,0"
+                               Click="UpdateNowButton_Click"/>
+
+                    <ui:Button x:Name="UpdateLaterButton" Grid.Column="3" Content="Later"
+                               Appearance="Secondary" Padding="14,5" Margin="8,0,0,0"
+                               Click="UpdateLaterButton_Click"/>
+                </Grid>
+            </Border>
+
             <Border x:Name="StatusBanner" Visibility="Collapsed" CornerRadius="8"
                     Padding="14,10" Margin="0,0,0,8" BorderThickness="1"
                     Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
@@ -272,6 +302,50 @@
                             </Grid>
                         </StackPanel>
                     </Grid>
+
+                    <!-- Update group: installed version, automatic checks and a manual check -->
+                    <Grid Margin="0,18,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="UPDATES" Style="{StaticResource SectionLabel}"/>
+                        <Border Grid.Column="1" Style="{StaticResource SectionRule}"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                            <TextBlock Text="Installed version" Style="{StaticResource SettingLabel}"/>
+                            <TextBlock x:Name="VersionText" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Margin="0,0,20,0">
+                            <TextBlock Text="Automatic updates" Style="{StaticResource SettingLabel}"/>
+                            <Grid Style="{StaticResource ToggleRow}">
+                                <ui:ToggleSwitch x:Name="AutoUpdateToggle" IsChecked="True"
+                                                 OnContent="On" OffContent="Off"
+                                                 MinWidth="0" HorizontalAlignment="Left"
+                                                 VerticalAlignment="Center"
+                                                 Checked="AutoUpdateToggle_Changed"
+                                                 Unchecked="AutoUpdateToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <ui:Button Grid.Column="2" x:Name="CheckForUpdatesButton" Content="Check for updates"
+                                   Appearance="Secondary" Height="34" Padding="14,0"
+                                   VerticalAlignment="Bottom" Click="CheckForUpdatesButton_Click"/>
+                    </Grid>
+
+                    <TextBlock x:Name="UpdateStatusText" FontSize="11" Margin="0,8,0,0"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               TextTrimming="CharacterEllipsis"/>
 
                     <Border Margin="0,16,0,0" Padding="0,12,0,0"
                             BorderThickness="0,1,0,0"

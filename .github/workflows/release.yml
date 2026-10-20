@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, for example v2.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.version }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+
+          $version = $version.Trim().TrimStart('v', 'V')
+          if ($version -notmatch '^\d+\.\d+\.\d+') {
+            throw "Version '$version' is not a valid semantic version."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore ScanEzi.csproj
+
+      - name: Publish framework-dependent build
+        run: >
+          dotnet publish ScanEzi.csproj -c Release -r win-x64 --self-contained false
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:InformationalVersion=${{ steps.version.outputs.version }}
+          -o publish/framework-dependent
+
+      - name: Publish self-contained build
+        run: >
+          dotnet publish ScanEzi.csproj -c Release -r win-x64 --self-contained true
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:InformationalVersion=${{ steps.version.outputs.version }}
+          -o publish/self-contained
+
+      - name: Package builds
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          Compress-Archive -Path 'publish/framework-dependent/*' -DestinationPath "ScanEzi-$version-win-x64.zip" -Force
+          Compress-Archive -Path 'publish/self-contained/*' -DestinationPath "ScanEzi-$version-win-x64-self-contained.zip" -Force
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          $version = '${{ steps.version.outputs.version }}'
+          $notes = "docs/release-notes/$tag.md"
+
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $notes) {
+              gh release create $tag --title "ScanEzi $version" --notes-file $notes
+            } else {
+              gh release create $tag --title "ScanEzi $version" --generate-notes
+            }
+          }
+
+          gh release upload $tag "ScanEzi-$version-win-x64.zip" "ScanEzi-$version-win-x64-self-contained.zip" --clobber

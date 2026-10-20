@@ -72,6 +72,13 @@ Download the latest release and run `ScanEzi.exe`.
 
 There is no installer, and nothing is written outside your user profile.
 
+### Updates
+
+ScanEzi 2.0 and later check GitHub Releases on launch. When a newer release is available, the
+package that matches your installation is downloaded in the background and installed the next time
+you restart. The **UPDATES** section in Settings shows the installed version, lets you turn
+automatic checks on or off, and provides a **Check for updates** button for manual checks.
+
 ## Build from source
 
 ```powershell
@@ -95,6 +102,13 @@ dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=
 
 The result lands in `bin\Release\net8.0-windows10.0.22621.0\win-x64\publish\ScanEzi.exe` and runs on a
 machine with no .NET runtime installed.
+
+### Releasing
+
+Pushing a tag such as `v2.0.0` runs the `Release` workflow, which builds both Windows x64 packages
+and publishes them to GitHub Releases. The workflow uses `docs/release-notes/<tag>.md` when that
+file exists; otherwise it lets GitHub generate the notes. To re-run a release from the Actions tab,
+use the **Release** workflow's manual dispatch and supply the version.
 
 ## Usage
 

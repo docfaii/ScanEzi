@@ -34,10 +34,13 @@ namespace ScanEzi
         public int ThumbnailHeight { get; set; } = 150;
         public int MaxThumbnails { get; set; } = 10;
 
+        /// <summary>Checks GitHub for a newer release on launch and downloads it in the background.</summary>
+        public bool AutoUpdate { get; set; } = true;
+
         /// <summary>Bumped when a default changes so existing installs pick up the new behaviour.</summary>
         public int Version { get; set; } = 1;
 
-        private const int CurrentVersion = 2;
+        private const int CurrentVersion = 3;
 
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -61,14 +64,25 @@ namespace ScanEzi
 
         private static AppSettings Migrate(AppSettings settings)
         {
-            if (settings.Version < CurrentVersion)
+            if (settings.Version >= CurrentVersion)
+            {
+                return settings;
+            }
+
+            if (settings.Version < 2)
             {
                 // v2: PDF became the default output format.
                 settings.DefaultFormat = "pdf";
-                settings.Version = CurrentVersion;
-                settings.Save();
             }
 
+            if (settings.Version < 3)
+            {
+                // v3: automatic update checks.
+                settings.AutoUpdate = true;
+            }
+
+            settings.Version = CurrentVersion;
+            settings.Save();
             return settings;
         }
 
