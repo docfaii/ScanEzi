@@ -27,6 +27,9 @@ namespace ScanEzi
         private bool _checkingForUpdates;
         private UpdateInfo? _pendingUpdate;
         private string? _preparedUpdatePath;
+        private int _capabilityRequestId;
+        private readonly Dictionary<ScannedImage, PageTile> _pageTiles = new();
+        private readonly HpEasyScanDialogGuard _hpDialogGuard = new();
 
         /// <summary>
         /// The sides preference the user chose, independent of whether the currently
@@ -54,6 +57,10 @@ namespace ScanEzi
                 ApplyLoadedSettings();
                 await RefreshScannersAsync();
 
+                // HP's own button launcher shows an "HP Easy Scan is not installed" error when
+                // the front-panel button is pressed; keep that dialog off the screen.
+                _hpDialogGuard.Start();
+
                 // Listen for the physical Scan button. The service marshals the callback
                 // onto the UI thread before invoking the handler.
                 _buttonService.StatusChanged += OnButtonServiceStatusChanged;
@@ -70,6 +77,7 @@ namespace ScanEzi
             {
                 _buttonService.StatusChanged -= OnButtonServiceStatusChanged;
                 _buttonService.Dispose();
+                _hpDialogGuard.Dispose();
             };
 
             // The gallery starts empty, so the save action stays greyed out until a page lands.
@@ -223,6 +231,11 @@ namespace ScanEzi
         private async void ScannerComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_uiReady) return;
+
+            // Repopulating the list during a refresh raises this event too; the refresh applies
+            // the capabilities itself once the new list is in place.
+            if (_applyingSettings) return;
+
             UpdateActiveDevice();
             PersistSettings();
             await ApplyCapabilitiesAsync();
@@ -239,8 +252,22 @@ namespace ScanEzi
             var scannerId = item.Tag.ToString();
             if (string.IsNullOrEmpty(scannerId)) return;
 
+            // Capability reads are asynchronous, so a slow answer for a previously selected
+            // device must not overwrite the options of the device now in the list.
+            int requestId = ++_capabilityRequestId;
             var caps = await _scannerService.GetCapabilitiesAsync(scannerId);
-            if (caps == null) return;
+            if (requestId != _capabilityRequestId) return;
+
+            if (!caps.Reported)
+            {
+                // No answer is not the same as "no features". Leaving everything enabled keeps
+                // the settings usable instead of greyed out until Refresh is pressed.
+                ScanLog.Write($"Capabilities unavailable for '{scannerId}'; leaving all options enabled.");
+                CapabilityText.Text = "Couldn't read this device's capabilities \u2014 all options remain available.";
+                ApplyCapabilityState(null);
+                UpdateBadges();
+                return;
+            }
 
             var traits = new List<string>();
             if (caps.HasFeeder) traits.Add(caps.CanDuplex ? "duplex feeder" : "simplex feeder");
@@ -250,30 +277,7 @@ namespace ScanEzi
                 : "This device did not report its capabilities.";
 
             bool duplexAvailable = caps.HasFeeder && caps.CanDuplex;
-
-            // An explicit per-device choice wins; otherwise a duplex feeder starts 2-sided.
-            _preferredDuplex = _settings.GetDuplex(scannerId, duplexAvailable);
-
-            bool wasApplyingSettings = _applyingSettings;
-            _applyingSettings = true;
-            try
-            {
-                DuplexComboBox.IsEnabled = duplexAvailable;
-
-                // Restore the user's preference when the device can honour it, and fall back
-                // to 1-sided display otherwise -- without overwriting the stored preference.
-                DuplexComboBox.SelectedIndex = duplexAvailable && _preferredDuplex ? 1 : 0;
-            }
-            finally
-            {
-                _applyingSettings = wasApplyingSettings;
-            }
-
-            if (SourceComboBox.Items.Count >= 3)
-            {
-                ((ComboBoxItem)SourceComboBox.Items[1]).IsEnabled = caps.HasFeeder;
-                ((ComboBoxItem)SourceComboBox.Items[2]).IsEnabled = caps.HasFlatbed;
-            }
+            ApplyCapabilityState(caps);
 
             int desired = SourceComboBox.SelectedIndex;
             int corrected = desired;
@@ -288,6 +292,40 @@ namespace ScanEzi
             }
 
             UpdateBadges();
+        }
+
+        /// <summary>
+        /// Sets the enabled state of the source-dependent options. A null capability set means
+        /// the device could not be queried, in which case every option stays available.
+        /// </summary>
+        private void ApplyCapabilityState(ScannerCapabilities? caps)
+        {
+            bool wasApplyingSettings = _applyingSettings;
+            _applyingSettings = true;
+            try
+            {
+                DuplexComboBox.IsEnabled = caps == null || (caps.HasFeeder && caps.CanDuplex);
+
+                if (caps != null)
+                {
+                    // An explicit per-device choice wins; otherwise a duplex feeder starts 2-sided.
+                    _preferredDuplex = _settings.GetDuplex(CurrentScannerId, caps.HasFeeder && caps.CanDuplex);
+
+                    // Restore the user's preference when the device can honour it, and fall back
+                    // to 1-sided display otherwise -- without overwriting the stored preference.
+                    DuplexComboBox.SelectedIndex = DuplexComboBox.IsEnabled && _preferredDuplex ? 1 : 0;
+                }
+
+                if (SourceComboBox.Items.Count >= 3)
+                {
+                    ((ComboBoxItem)SourceComboBox.Items[1]).IsEnabled = caps?.HasFeeder ?? true;
+                    ((ComboBoxItem)SourceComboBox.Items[2]).IsEnabled = caps?.HasFlatbed ?? true;
+                }
+            }
+            finally
+            {
+                _applyingSettings = wasApplyingSettings;
+            }
         }
 
         private void UpdateActiveDevice()
@@ -353,6 +391,15 @@ namespace ScanEzi
         {
             if (!_uiReady || _applyingSettings) return;
             PersistSettings();
+
+            // Empty pages follow the toggle, but a page the user ticked or unticked by hand
+            // keeps its own choice until the toggle changes again.
+            bool discard = DiscardBlankToggle.IsChecked == true;
+            foreach (var page in _scannedImages.Where(p => p.IsBlank))
+            {
+                page.IsSelected = !discard;
+            }
+
             UpdateThumbnails();
         }
 
@@ -364,7 +411,12 @@ namespace ScanEzi
 
         private void UpdateSaveButtonLabel()
         {
-            SaveButton.Content = IsPdfOutput ? "Save as PDF..." : "Save Images...";
+            int selected = _scannedImages.Count(img => img.IsSelected);
+            SaveButton.Content = selected == 0
+                ? (IsPdfOutput ? "Save as PDF..." : "Save Images...")
+                : (IsPdfOutput
+                    ? $"Save {(selected == 1 ? "1 page" : $"{selected} pages")} as PDF..."
+                    : $"Save {(selected == 1 ? "1 page" : $"{selected} pages")}...");
             FormatBadge.Text = "Save: " + (IsPdfOutput ? "PDF" : "JPG");
         }
 
@@ -681,15 +733,18 @@ namespace ScanEzi
 
                     foreach (var scannedImage in acquired)
                     {
+                        // Empty pages start unticked so they do not end up in the save, but the
+                        // user can always tick one back on.
+                        scannedImage.IsSelected = !(_settings.DiscardBlankPages && scannedImage.IsBlank);
                         _scannedImages.Add(scannedImage);
                     }
                     UpdateThumbnails();
 
-                    int blankPages = acquired.Count(page => page.IsBlank);
+                    int blankPages = acquired.Count(page => !page.IsSelected);
                     string sides = outcome.DuplexApplied ? " (2-sided)" : string.Empty;
 
-                    StatusText.Text = blankPages > 0 && _settings.DiscardBlankPages
-                        ? $"Scan complete{sides} \u00B7 {acquired.Count} page(s) acquired \u00B7 {blankPages} empty page(s) skipped"
+                    StatusText.Text = blankPages > 0
+                        ? $"Scan complete{sides} \u00B7 {acquired.Count} page(s) acquired \u00B7 {blankPages} empty page(s) unticked"
                         : $"Scan complete{sides} \u00B7 {acquired.Count} page(s) acquired";
 
                     if (!string.IsNullOrWhiteSpace(outcome.Warning))
@@ -739,8 +794,15 @@ namespace ScanEzi
                 }
 
                 var target = _scannedImages[edit.Index];
+                bool wasBlank = target.IsBlank;
                 target.ImagePath = edit.Path;
                 target.Kind = PageContentAnalyzer.Classify(edit.Path);
+
+                // Editing a page can change what it looks like, so keep the tick in step with
+                // the fresh classification: a page that stopped being empty joins the save,
+                // and one that became empty follows the discard preference.
+                if (wasBlank && !target.IsBlank) target.IsSelected = true;
+                else if (!wasBlank && target.IsBlank) target.IsSelected = !_settings.DiscardBlankPages;
             }
 
             UpdateThumbnails();
@@ -759,13 +821,11 @@ namespace ScanEzi
 
             HideBanner();
 
-            var pagesToSave = _scannedImages
-                .Where(img => !(_settings.DiscardBlankPages && img.IsBlank))
-                .ToList();
+            var pagesToSave = _scannedImages.Where(img => img.IsSelected).ToList();
 
             if (pagesToSave.Count == 0)
             {
-                ShowBanner(true, "Every scanned page is empty, so there is nothing to save.");
+                ShowBanner(true, "No pages are ticked, so there is nothing to save. Tick a page to include it.");
                 return;
             }
 
@@ -803,7 +863,7 @@ namespace ScanEzi
         }
 
         private string SkippedSuffix(int skipped) =>
-            skipped > 0 ? $" \u00B7 {skipped} empty page(s) skipped" : string.Empty;
+            skipped > 0 ? $" \u00B7 {skipped} page(s) left out" : string.Empty;
 
         private async Task SaveAsPdfAsync(IReadOnlyList<ScannedImage> pages)
         {
@@ -846,17 +906,78 @@ namespace ScanEzi
         }
 
         /// <summary>
-        /// The save action only lights up when at least one page will actually be written,
-        /// so an empty gallery (or one holding nothing but empty pages) stays greyed out.
+        /// The save action only lights up when at least one page is ticked, so an empty gallery
+        /// (or one where everything was unticked) stays greyed out.
         /// </summary>
         private void UpdateSaveButtonState()
         {
-            SaveButton.IsEnabled = _scannedImages.Any(img => !(img.IsBlank && _settings.DiscardBlankPages));
+            int selected = _scannedImages.Count(img => img.IsSelected);
+            SaveButton.IsEnabled = selected > 0;
+            NewScanButton.IsEnabled = _scannedImages.Count > 0;
+            UpdateSaveButtonLabel();
+        }
+
+        /// <summary>
+        /// Clears the gallery for a fresh document, which is the common case when the same
+        /// stack has just been saved and the next one goes into the feeder.
+        /// </summary>
+        private void NewScanButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_scannedImages.Count == 0)
+            {
+                StatusText.Text = "Ready to scan.";
+                return;
+            }
+
+            int cleared = _scannedImages.Count;
+
+            foreach (var page in _scannedImages)
+            {
+                TryDeletePageFile(page.ImagePath);
+            }
+
+            _scannedImages.Clear();
+            HideBanner();
+            UpdateThumbnails();
+
+            StatusText.Text = cleared == 1
+                ? "Cleared 1 page \u00B7 ready to scan"
+                : $"Cleared {cleared} pages \u00B7 ready to scan";
+        }
+
+        /// <summary>
+        /// Removes a page's working file, but only when it sits in this app's own temp folder
+        /// so a user-chosen file can never be deleted by mistake.
+        /// </summary>
+        private static void TryDeletePageFile(string path)
+        {
+            try
+            {
+                var pageFolder = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "ScanEzi"));
+                var fullPath = Path.GetFullPath(path);
+
+                // Only files sitting directly in this app's own temp folder are removed, so a
+                // user-chosen file (or a similarly named sibling folder) is never touched.
+                bool isOwnTempFile = string.Equals(
+                    Path.GetDirectoryName(fullPath),
+                    pageFolder,
+                    StringComparison.OrdinalIgnoreCase);
+
+                if (isOwnTempFile && File.Exists(fullPath))
+                {
+                    File.Delete(fullPath);
+                }
+            }
+            catch
+            {
+                // A locked or already-removed temp file must not block the reset.
+            }
         }
 
         private void UpdateThumbnails()
         {
             ThumbnailPanel.Children.Clear();
+            _pageTiles.Clear();
 
             if (_scannedImages.Count == 0)
             {
@@ -872,7 +993,6 @@ namespace ScanEzi
             for (int i = 0; i < _scannedImages.Count; i++)
             {
                 var img = _scannedImages[i];
-                bool excluded = img.IsBlank && _settings.DiscardBlankPages;
 
                 var border = new Border
                 {
@@ -891,6 +1011,7 @@ namespace ScanEzi
 
                 var stack = new Grid();
 
+                Image? preview = null;
                 try
                 {
                     var bitmap = new BitmapImage();
@@ -899,12 +1020,12 @@ namespace ScanEzi
                     bitmap.CacheOption = BitmapCacheOption.OnLoad;
                     bitmap.EndInit();
 
-                    stack.Children.Add(new Image
+                    preview = new Image
                     {
                         Source = bitmap,
-                        Stretch = Stretch.Uniform,
-                        Opacity = excluded ? 0.25 : 1.0
-                    });
+                        Stretch = Stretch.Uniform
+                    };
+                    stack.Children.Add(preview);
                 }
                 catch
                 {
@@ -917,17 +1038,31 @@ namespace ScanEzi
                     });
                 }
 
-                if (excluded)
+                var toggle = new CheckBox
                 {
-                    stack.Children.Add(BuildEmptyPageOverlay(img.Kind));
-                    border.ToolTip = img.Kind == PageKind.Black
-                        ? "Empty page \u2014 the sensor captured nothing, so it is not saved"
-                        : "Empty page \u2014 blank sheet, so it is not saved";
-                }
-                else
+                    IsChecked = img.IsSelected,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Tick to include this page when saving"
+                };
+
+                // Named so the tick state is reachable from accessibility tools and tests.
+                toggle.SetValue(System.Windows.Automation.AutomationProperties.AutomationIdProperty, $"PageToggle{i + 1}");
+                toggle.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, $"Include page {i + 1} when saving");
+
+                toggle.Click += (s, args) => SetPageSelected(img, toggle.IsChecked == true);
+
+                // The tick sits on a translucent chip so it stays visible over light scans.
+                stack.Children.Add(new Border
                 {
-                    border.ToolTip = "Click to preview, crop or rotate";
-                }
+                    Background = new SolidColorBrush(Color.FromArgb(0xB3, 0x1C, 0x1C, 0x1C)),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(4, 1, 6, 1),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(6),
+                    ToolTip = "Tick to include this page when saving",
+                    Child = toggle
+                });
 
                 stack.Children.Add(BuildPageNumberBadge(i + 1));
                 border.Child = stack;
@@ -935,10 +1070,73 @@ namespace ScanEzi
                 var page = img;
                 border.MouseLeftButtonUp += (s, args) => OpenPreview(page);
 
+                var tile = new PageTile(border, stack, preview, toggle);
+                _pageTiles[img] = tile;
+
                 ThumbnailPanel.Children.Add(border);
+                RefreshPageTile(img);
             }
 
             UpdateSaveButtonState();
+        }
+
+        /// <summary>
+        /// Repaints a single tile from the page's current state, so ticking a page never has to
+        /// rebuild (and re-decode) the whole gallery.
+        /// </summary>
+        private void RefreshPageTile(ScannedImage img)
+        {
+            if (!_pageTiles.TryGetValue(img, out var tile)) return;
+
+            if (tile.Preview != null)
+            {
+                tile.Preview.Opacity = img.IsSelected ? 1.0 : 0.25;
+            }
+
+            if (tile.Overlay != null)
+            {
+                tile.Stack.Children.Remove(tile.Overlay);
+                tile.Overlay = null;
+            }
+
+            if (!img.IsSelected)
+            {
+                var overlay = BuildExcludedOverlay(img.Kind);
+                tile.Overlay = overlay;
+
+                // Below the page-number badge so the number stays readable.
+                tile.Stack.Children.Insert(tile.Stack.Children.Count - 1, overlay);
+            }
+
+            tile.Border.ToolTip = img.IsSelected
+                ? "Click to preview, crop or rotate \u00B7 untick to leave this page out"
+                : img.Kind switch
+                {
+                    PageKind.Black => "Nothing was captured on this page \u2014 tick to save it anyway",
+                    PageKind.White => "Blank sheet \u2014 tick to save it anyway",
+                    _ => "This page will not be saved \u2014 tick to include it"
+                };
+
+            if (tile.Toggle.IsChecked != img.IsSelected)
+            {
+                tile.Toggle.IsChecked = img.IsSelected;
+            }
+        }
+
+        private void SetPageSelected(ScannedImage page, bool selected)
+        {
+            if (page.IsSelected != selected)
+            {
+                page.IsSelected = selected;
+            }
+
+            RefreshPageTile(page);
+            UpdateSaveButtonState();
+
+            int selectedCount = _scannedImages.Count(img => img.IsSelected);
+            StatusText.Text = selectedCount == 0
+                ? "No pages ticked \u00B7 tick a page to include it when saving"
+                : $"{selectedCount} of {_scannedImages.Count} page(s) will be saved";
         }
 
         private static UIElement BuildPageNumberBadge(int number)
@@ -967,7 +1165,7 @@ namespace ScanEzi
         /// Marks a page that will not be saved: a struck-through badge over a dimmed preview,
         /// so the sheet is still visible in the gallery instead of silently disappearing.
         /// </summary>
-        private UIElement BuildEmptyPageOverlay(PageKind kind)
+        private UIElement BuildExcludedOverlay(PageKind kind)
         {
             var overlay = new Grid();
             overlay.Children.Add(new Border
@@ -992,7 +1190,12 @@ namespace ScanEzi
 
             badge.Children.Add(new TextBlock
             {
-                Text = kind == PageKind.Black ? "No scan" : "Blank",
+                Text = kind switch
+                {
+                    PageKind.Black => "No scan",
+                    PageKind.White => "Blank",
+                    _ => "Not saved"
+                },
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = Brushes.White,
@@ -1002,6 +1205,28 @@ namespace ScanEzi
 
             overlay.Children.Add(badge);
             return overlay;
+        }
+
+        /// <summary>The pieces of a gallery tile that change when a page is ticked.</summary>
+        private sealed class PageTile
+        {
+            public PageTile(Border border, Grid stack, Image? preview, CheckBox toggle)
+            {
+                Border = border;
+                Stack = stack;
+                Preview = preview;
+                Toggle = toggle;
+            }
+
+            public Border Border { get; }
+
+            public Grid Stack { get; }
+
+            public Image? Preview { get; }
+
+            public CheckBox Toggle { get; }
+
+            public UIElement? Overlay { get; set; }
         }
     }
 
@@ -1015,6 +1240,12 @@ namespace ScanEzi
         public PageKind Kind { get; set; } = PageKind.Content;
 
         public bool IsBlank => Kind != PageKind.Content;
+
+        /// <summary>
+        /// Whether the page is ticked for saving. Empty pages start unticked, but the choice is
+        /// always the user's, so a page is never dropped without a visible, reversible mark.
+        /// </summary>
+        public bool IsSelected { get; set; } = true;
 
         public ScannedImage(string imagePath)
         {

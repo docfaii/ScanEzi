@@ -13,6 +13,12 @@ namespace ScanEzi
         public bool HasFeeder { get; set; }
         public bool HasFlatbed { get; set; }
         public bool CanDuplex { get; set; }
+
+        /// <summary>
+        /// False when the device could not be queried at all. Drivers are often still warming
+        /// up right after launch, and "no answer" must not be mistaken for "no features".
+        /// </summary>
+        public bool Reported { get; set; }
     }
 
     /// <summary>
@@ -49,7 +55,25 @@ namespace ScanEzi
             return await DeviceInformation.FindAllAsync(selector);
         }
 
-        public async Task<ScannerCapabilities> GetCapabilitiesAsync(string scannerId)
+        public async Task<ScannerCapabilities> GetCapabilitiesAsync(string scannerId, int attempts = 3)
+        {
+            // A driver that has just been enumerated frequently refuses the first query, which
+            // is why the settings used to stay greyed out until Refresh was pressed.
+            for (int attempt = 1; attempt <= attempts; attempt++)
+            {
+                var caps = await ReadCapabilitiesAsync(scannerId);
+                if (caps.Reported) return caps;
+
+                if (attempt < attempts)
+                {
+                    await Task.Delay(250 * attempt);
+                }
+            }
+
+            return new ScannerCapabilities();
+        }
+
+        private static async Task<ScannerCapabilities> ReadCapabilitiesAsync(string scannerId)
         {
             var caps = new ScannerCapabilities();
             try
@@ -72,11 +96,14 @@ namespace ScanEzi
                         caps.CanDuplex = false;
                     }
                 }
+
+                caps.Reported = true;
             }
-            catch
+            catch (Exception ex)
             {
-                // Device went away; report no capabilities.
+                ScanLog.Write($"Capability read failed for '{scannerId}': {ex.GetType().Name}: {ex.Message}");
             }
+
             return caps;
         }
 

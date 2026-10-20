@@ -78,6 +78,7 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <!-- Active device -->
@@ -94,6 +95,7 @@
             </ui:Card>
 
             <ui:Button Grid.Column="1" x:Name="SettingsToggleButton" Appearance="Secondary"
+                       AutomationProperties.AutomationId="SettingsToggleButton"
                        ToolTip="Device and scan settings"
                        Width="36" Height="36" Padding="0" Margin="0,0,16,0"
                        VerticalAlignment="Center"
@@ -117,9 +119,17 @@
                 </Border>
             </WrapPanel>
 
-            <ui:Button Grid.Column="3" x:Name="QuickScanButton" Appearance="Primary"
-                       Content="Scan Now" Height="36" Padding="20,0" Margin="16,0,0,0"
-                       VerticalAlignment="Center" Click="ScanButton_Click"/>
+            <ui:Button Grid.Column="3" x:Name="NewScanButton" Appearance="Secondary"
+                       Content="New Scan" Height="36" Padding="16,0" Margin="16,0,0,0"
+                       VerticalAlignment="Center" IsEnabled="False"
+                       AutomationProperties.AutomationId="NewScanButton"
+                       ToolTip="Clear the scanned pages and start a fresh document"
+                       Click="NewScanButton_Click"/>
+
+            <ui:Button Grid.Column="4" x:Name="QuickScanButton" Appearance="Primary"
+                       Content="Scan Now" Height="36" Padding="20,0" Margin="8,0,0,0"
+                       VerticalAlignment="Center" Click="ScanButton_Click"
+                       AutomationProperties.AutomationId="QuickScanButton"/>
         </Grid>
 
         <!-- Inline update banner, status banner + collapsible settings panel -->
@@ -235,6 +245,7 @@
                         <StackPanel Grid.Column="2" Margin="0,0,20,0">
                             <TextBlock Text="Sides" Style="{StaticResource SettingLabel}"/>
                             <ComboBox x:Name="DuplexComboBox" Height="34" VerticalContentAlignment="Center"
+                                      AutomationProperties.AutomationId="DuplexComboBox"
                                       SelectionChanged="DuplexComboBox_SelectionChanged">
                                 <ComboBoxItem Content="1-Sided (Simplex)" IsSelected="True"/>
                                 <ComboBoxItem Content="2-Sided (Duplex)"/>
@@ -244,6 +255,7 @@
                         <StackPanel Grid.Column="3">
                             <TextBlock Text="Source" Style="{StaticResource SettingLabel}"/>
                             <ComboBox x:Name="SourceComboBox" Height="34" VerticalContentAlignment="Center"
+                                      AutomationProperties.AutomationId="SourceComboBox"
                                       SelectionChanged="SourceComboBox_SelectionChanged">
                                 <ComboBoxItem Content="Auto Detect" IsSelected="True"/>
                                 <ComboBoxItem Content="Document Feeder"/>
@@ -282,7 +294,8 @@
                             <TextBlock Text="Empty pages" Style="{StaticResource SettingLabel}"/>
                             <Grid Style="{StaticResource ToggleRow}">
                                 <ui:ToggleSwitch x:Name="DiscardBlankToggle" IsChecked="True"
-                                                 OnContent="Discard" OffContent="Keep"
+                                                 OnContent="Untick" OffContent="Keep"
+                                                 ToolTip="Empty pages are unticked for saving by default; tick one on any page to save it anyway"
                                                  MinWidth="0" HorizontalAlignment="Left"
                                                  VerticalAlignment="Center"
                                                  Checked="DiscardBlankToggle_Changed"
@@ -404,6 +417,9 @@
                         <TextBlock Text="Click a page to preview, crop or rotate it" FontSize="12"
                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                        <TextBlock Text="Untick a page to leave it out of the save" FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   HorizontalAlignment="Center" Margin="0,3,0,0"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -435,6 +451,7 @@
                 </TextBlock>
 
                 <ui:Button Grid.Column="2" x:Name="SaveButton" Content="Save as PDF..." Appearance="Primary"
+                           AutomationProperties.AutomationId="SaveButton"
                            HorizontalAlignment="Right" Click="SaveButton_Click" Padding="18,7" IsEnabled="False"/>
             </Grid>
         </Border>

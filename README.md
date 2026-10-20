@@ -39,9 +39,13 @@ directly to the WIA scanner stack through `Windows.Devices.Scanners`.
 - **PDF or JPG output** — PDF is the default; JPG is one click away. The active format is shown in
   the header and on the save button.
 - **Empty page detection** — a duplex pass over a single-sided sheet produces an all-black frame from
-  the sensor that saw nothing. ScanEzi recognises those, and fully blank white sheets, and skips them
-  when saving — while still showing them in the gallery with a red cross so you can see exactly what
-  the scanner returned.
+  the sensor that saw nothing. ScanEzi recognises those, and fully blank white sheets, and leaves them
+  unticked when saving — while still showing them in the gallery with a red cross so you can see
+  exactly what the scanner returned.
+- **Tick what you save** — every page in the gallery has a checkbox. Untick anything you don't want
+  in the output; the save button and status line count what will be written.
+- **New Scan** — clears the gallery and its temporary files and puts the app back at ready-to-scan
+  without a restart.
 - **Auto orientation** — pages fed upside down or sideways are turned upright using the Windows OCR
   engine. It only turns a page when it is confident, so nothing is rotated by guesswork.
 - **Full-size preview** — click any thumbnail to open the page at full size and rotate it, drag a crop
@@ -132,13 +136,16 @@ The result lands in `installer\output\ScanEzi-<version>-setup.exe`. It installs 
 2. Click the **gear** icon to choose the scanner, page size, sides, source, save format, empty-page
    handling, and auto orientation. Settings persist as you change them.
 3. Click **Scan Now**. Each page appears in the gallery, numbered, with empty pages marked by a red
-   cross.
+   cross. Every page has a checkbox — empty pages arrive unticked.
 4. Click a thumbnail to open the **preview** — rotate it, or press **Crop** and drag out the area to
    keep. **Apply** writes the edit back to the gallery; **Cancel** discards it.
-5. Click **Save as PDF…** (or **Save Images…**) to export every page that is not marked empty.
+5. Click **Save as PDF…** (or **Save Images…**) to export the ticked pages.
+6. Click **New Scan** to clear the gallery and start again. The pages you discard are deleted from the
+   temporary folder.
 
 Pages marked with a red cross are empty. They stay in the gallery so you can see what the scanner
-returned, but they are excluded from the save. Turn off **Empty pages → Discard** to include them.
+returned, but they are unticked, so they are left out of the save. Tick one to include it, or set
+**Empty pages → Keep** to have them arrive ticked.
 
 The settings panel holds everything that is not needed during a scan, including the refresh button
 for the scanner list:
@@ -186,6 +193,7 @@ The whole pass runs on a background thread after the scan, and can be switched o
 | `PdfExportService.cs` | Dependency-free multi-page PDF writer (embeds each page as JPEG) |
 | `AppSettings.cs` | Persisted settings model |
 | `ScanLog.cs` | Diagnostic log writer |
+| `HpEasyScanDialogGuard.cs` | Closes the HP Easy Scan error dialog raised by the scanner's STI button handler |
 | `UpdateService.cs` | GitHub release checks, verified downloads, installer/portable update apply |
 | `installer\ScanEzi.iss` | Inno Setup script used by the release workflow |
 
@@ -213,6 +221,10 @@ The whole pass runs on a background thread after the scan, and can be switched o
   files are split so each side becomes its own page.
 - Some drivers return tiny placeholder files (tens of bytes) when a feeder is empty. Those are
   discarded and an actionable message is shown instead of a broken thumbnail.
+- If HP's Still Image registration is present (printers and all-in-ones), Windows launches
+  `SDSSLchr.exe` when the hardware Scan button is pressed. When the *HP Easy Scan* application is not
+  installed that raises an error dialog; ScanEzi closes it automatically. The registration itself is
+  machine-wide (`HKLM`), so a per-user app cannot remove it.
 - Edits are written next to the source file in `%TEMP%\ScanEzi` as new JPEGs; the gallery points at
   the newest one.
 
