@@ -101,15 +101,15 @@ jobs:
           $version = '${{ steps.version.outputs.version }}'
           $notes = "docs/release-notes/$tag.md"
 
+          # Create the release as a draft so assets are attached before it becomes the latest
+          # release; publishing last keeps `releases/latest` (which the app reads) consistent.
           gh release view $tag --json tagName 2>$null | Out-Null
           if ($LASTEXITCODE -ne 0) {
             if (Test-Path $notes) {
-              gh release create $tag --title "ScanEzi $version" --notes-file $notes
+              gh release create $tag --draft --title "ScanEzi $version" --notes-file $notes
             } else {
-              gh release create $tag --title "ScanEzi $version" --generate-notes
+              gh release create $tag --draft --title "ScanEzi $version" --generate-notes
             }
-          } elseif (Test-Path $notes) {
-            gh release edit $tag --title "ScanEzi $version" --notes-file $notes
           }
 
           gh release upload $tag `
@@ -117,3 +117,9 @@ jobs:
             "ScanEzi-$version-win-x64.zip" `
             "ScanEzi-$version-win-x64-self-contained.zip" `
             --clobber
+
+          if (Test-Path $notes) {
+            gh release edit $tag --draft=false --latest --title "ScanEzi $version" --notes-file $notes
+          } else {
+            gh release edit $tag --draft=false --latest --title "ScanEzi $version"
+          }
