@@ -22,8 +22,9 @@ ScanEzi scans documents from any scanner Windows knows about, shows the pages as
 gallery, and saves them as a multi-page PDF or as individual JPGs. It handles duplex sheets,
 detects and skips empty pages, and lets you crop and rotate each page in a full-size preview.
 
-It is a single small window with no account, no telemetry, and no background services — it talks
-directly to the WIA scanner stack through `Windows.Devices.Scanners`.
+It is a single small window with no account, no telemetry, and no services — it talks directly to the
+WIA scanner stack through `Windows.Devices.Scanners`. When you close the window it waits quietly in
+the notification area, so pressing the Scan button on the scanner still starts a scan.
 
 <p align="center">
   <img src="docs/main-window.png" width="820" alt="ScanEzi main window">
@@ -46,6 +47,11 @@ directly to the WIA scanner stack through `Windows.Devices.Scanners`.
   in the output; the save button and status line count what will be written.
 - **New Scan** — clears the gallery and its temporary files and puts the app back at ready-to-scan
   without a restart.
+- **The scanner's Scan button works** — pressing the physical Scan button on the device starts a scan,
+  even when the ScanEzi window is closed. The app stays in the notification area for exactly this
+  reason; the tray menu offers **Open ScanEzi**, **Scan now** and **Quit ScanEzi**.
+- **One copy at a time** — launching ScanEzi while it is already in the tray brings the existing window
+  forward instead of starting a second copy and registering the scan button twice.
 - **Auto orientation** — pages fed upside down or sideways are turned upright using the Windows OCR
   engine. It only turns a page when it is confident, so nothing is rotated by guesswork.
 - **Full-size preview** — click any thumbnail to open the page at full size and rotate it, drag a crop
@@ -143,6 +149,12 @@ The result lands in `installer\output\ScanEzi-<version>-setup.exe`. It installs 
 6. Click **New Scan** to clear the gallery and start again. The pages you discard are deleted from the
    temporary folder.
 
+Closing the window leaves ScanEzi in the notification area so the scanner's Scan button keeps working.
+Left-click the tray icon — or launch ScanEzi again — to bring the window back, and use **Quit ScanEzi**
+in its right-click menu to exit for real. The **SCAN BUTTON** section in Settings turns this off with
+**Keep running in the tray**, shows whether the listener is registered, and the tray tooltip reports the
+version, the listener state and the number of pages waiting.
+
 Pages marked with a red cross are empty. They stay in the gallery so you can see what the scanner
 returned, but they are unticked, so they are left out of the save. Tick one to include it, or set
 **Empty pages → Keep** to have them arrive ticked.
@@ -194,6 +206,8 @@ The whole pass runs on a background thread after the scan, and can be switched o
 | `AppSettings.cs` | Persisted settings model |
 | `ScanLog.cs` | Diagnostic log writer |
 | `HpEasyScanDialogGuard.cs` | Closes the HP Easy Scan error dialog raised by the scanner's STI button handler |
+| `ScannerButtonService.cs` | Listens for the scanner's hardware Scan button through the WIA device-manager callback |
+| `TrayIcon.cs` | Notification-area icon, tooltip, balloon and right-click menu via `Shell_NotifyIcon` |
 | `UpdateService.cs` | GitHub release checks, verified downloads, installer/portable update apply |
 | `installer\ScanEzi.iss` | Inno Setup script used by the release workflow |
 
@@ -204,6 +218,7 @@ The whole pass runs on a background thread after the scan, and can be switched o
 | `%APPDATA%\ScanEzi\settings.json` | Saved settings — delete it to reset the app |
 | `%TEMP%\ScanEzi` | Pages captured during the session |
 | `%LOCALAPPDATA%\ScanEzi\scan.log` | Per-scan diagnostics: device, source, duplex read-back, page count |
+| `%LOCALAPPDATA%\ScanEzi\button-service.log` | Scan-button listener diagnostics: registered events and callback errors |
 | `%LOCALAPPDATA%\ScanEzi\crash.log` | Unhandled exception details |
 | `%LOCALAPPDATA%\ScanEzi\update.log` | Update helper log — written after the app restarts into a new version |
 | `%LOCALAPPDATA%\Programs\ScanEzi` | Default install folder when installed with the setup program |
@@ -227,6 +242,14 @@ The whole pass runs on a background thread after the scan, and can be switched o
   machine-wide (`HKLM`), so a per-user app cannot remove it.
 - Edits are written next to the source file in `%TEMP%\ScanEzi` as new JPEGs; the gallery points at
   the newest one.
+- Closing the window hides ScanEzi to the notification area instead of exiting, because the hardware
+  Scan button listener only exists while the process is running. **Quit ScanEzi** in the tray menu, or
+  turning off **Keep running in the tray**, exits properly. Updates bypass this: the app exits fully
+  before the installer restarts it.
+- ScanEzi is single-instance per user session. A second launch hands its request to the running copy
+  and exits, which also stops the scan button from being registered twice.
+- Balloon notifications are shown through the shell, so they are subject to Windows notification
+  settings. Portable copies have no Start-menu entry, so Windows may file them under a generic name.
 
 ## Contributing
 

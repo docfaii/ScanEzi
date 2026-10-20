@@ -37,10 +37,16 @@ namespace ScanEzi
         /// <summary>Checks GitHub for a newer release on launch and downloads it in the background.</summary>
         public bool AutoUpdate { get; set; } = true;
 
+        /// <summary>
+        /// Closing the window hides it to the notification area instead of exiting, so the
+        /// scanner's hardware Scan button keeps starting scans.
+        /// </summary>
+        public bool MinimizeToTray { get; set; } = true;
+
         /// <summary>Bumped when a default changes so existing installs pick up the new behaviour.</summary>
         public int Version { get; set; } = 1;
 
-        private const int CurrentVersion = 3;
+        private const int CurrentVersion = 4;
 
         private static readonly string SettingsPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -79,6 +85,12 @@ namespace ScanEzi
             {
                 // v3: automatic update checks.
                 settings.AutoUpdate = true;
+            }
+
+            if (settings.Version < 4)
+            {
+                // v4: keep listening for the hardware Scan button in the notification area.
+                settings.MinimizeToTray = true;
             }
 
             settings.Version = CurrentVersion;

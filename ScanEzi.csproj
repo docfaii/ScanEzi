@@ -9,10 +9,10 @@
     <AssemblyTitle>ScanEzi</AssemblyTitle>
     <Product>ScanEzi</Product>
     <Description>A small, fast Windows scanner app for flatbed and document feeder scanners.</Description>
-    <Version>2.1.0</Version>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
-    <FileVersion>2.1.0.0</FileVersion>
-    <InformationalVersion>2.1.0</InformationalVersion>
+    <Version>2.2.0</Version>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <FileVersion>2.2.0.0</FileVersion>
+    <InformationalVersion>2.2.0</InformationalVersion>
     <Authors>ScanEzi contributors</Authors>
   </PropertyGroup>
 
@@ -25,3 +25,4 @@
     <PackageReference Include="WPF-UI" Version="4.3.0" />
   </ItemGroup>
 </Project>
+

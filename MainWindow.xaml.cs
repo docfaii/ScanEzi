@@ -30,6 +30,11 @@ namespace ScanEzi
         private int _capabilityRequestId;
         private readonly Dictionary<ScannedImage, PageTile> _pageTiles = new();
         private readonly HpEasyScanDialogGuard _hpDialogGuard = new();
+        private readonly TrayIcon _tray = new();
+        private bool _exitRequested;
+        private bool _trayNoticeShown;
+        private string _buttonListenerStatus = "Scan button starting";
+        private string? _lastTrayTooltip;
 
         /// <summary>
         /// The sides preference the user chose, independent of whether the currently
@@ -65,6 +70,11 @@ namespace ScanEzi
                 // onto the UI thread before invoking the handler.
                 _buttonService.StatusChanged += OnButtonServiceStatusChanged;
                 _buttonService.Initialize(Dispatcher, OnHardwareScanButtonPressed);
+
+                // The tray icon is what keeps this process - and therefore the listener -
+                // alive once the window is closed.
+                StartTrayIcon();
+
                 await _buttonService.StartAsync();
 
                 if (_settings.AutoUpdate)
@@ -73,11 +83,25 @@ namespace ScanEzi
                 }
             };
 
+            Closing += (s, e) =>
+            {
+                // Closing is the user's way of putting ScanEzi in the tray; the listener has to
+                // stay alive for the scanner's Scan button to keep working.
+                if (_exitRequested || App.IsShuttingDown || !_settings.MinimizeToTray)
+                {
+                    return;
+                }
+
+                e.Cancel = true;
+                HideToTray();
+            };
+
             Closed += (s, e) =>
             {
                 _buttonService.StatusChanged -= OnButtonServiceStatusChanged;
                 _buttonService.Dispose();
                 _hpDialogGuard.Dispose();
+                _tray.Dispose();
             };
 
             // The gallery starts empty, so the save action stays greyed out until a page lands.
@@ -94,12 +118,139 @@ namespace ScanEzi
 
         private void OnButtonServiceStatusChanged(string message)
         {
+            _buttonListenerStatus = _buttonService.LastError != null
+                ? "Scan button unavailable"
+                : "Scan button ready";
+
+            if (ButtonListenerText != null)
+            {
+                ButtonListenerText.Text = message;
+            }
+
             // A successful registration is not worth replacing the ready/idle status text;
             // only a failure needs to reach the user.
             if (_buttonService.LastError != null)
             {
                 StatusText.Text = message;
             }
+
+            UpdateTrayStatus();
+        }
+
+        private void StartTrayIcon()
+        {
+            _tray.Menu = BuildTrayMenu();
+            _tray.Activated += ShowFromTray;
+            _tray.Show(TrayTooltip());
+        }
+
+        private ContextMenu BuildTrayMenu()
+        {
+            var menu = new ContextMenu();
+
+            var open = new MenuItem { Header = "Open ScanEzi", FontWeight = FontWeights.SemiBold };
+            open.Click += (s, e) => ShowFromTray();
+            menu.Items.Add(open);
+
+            var scan = new MenuItem { Header = "Scan now" };
+            scan.Click += (s, e) => ScanFromTray();
+            menu.Items.Add(scan);
+
+            menu.Items.Add(new Separator());
+
+            var quit = new MenuItem { Header = "Quit ScanEzi" };
+            quit.Click += (s, e) => QuitFromTray();
+            menu.Items.Add(quit);
+
+            menu.Opened += (s, e) => scan.IsEnabled = QuickScanButton.IsEnabled;
+            return menu;
+        }
+
+        /// <summary>Hides the window without ending the process, so the listener keeps running.</summary>
+        private void HideToTray()
+        {
+            Hide();
+
+            if (_trayNoticeShown)
+            {
+                return;
+            }
+
+            _trayNoticeShown = true;
+            _tray.Notify(
+                "ScanEzi is still running",
+                "Press Scan on the scanner, or open ScanEzi from this icon. Use Quit in its menu to close the app.");
+        }
+
+        /// <summary>Brings the window back from the tray. Also called by a second launch.</summary>
+        public void ShowFromTray()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(ShowFromTray));
+                return;
+            }
+
+            Show();
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+            }
+
+            Activate();
+
+            // A window restored from the tray can still sit behind the foreground app.
+            Topmost = true;
+            Topmost = false;
+            Focus();
+        }
+
+        private void ScanFromTray()
+        {
+            if (QuickScanButton.IsEnabled)
+            {
+                ScanButton_Click(QuickScanButton, new RoutedEventArgs());
+            }
+        }
+
+        private void QuitFromTray()
+        {
+            _exitRequested = true;
+            Close();
+        }
+
+        private void TrayToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            // XAML parses the switch before the constructor has loaded the settings file.
+            if (_settings == null)
+            {
+                return;
+            }
+
+            _settings.MinimizeToTray = TrayToggle.IsChecked == true;
+            if (!_applyingSettings)
+            {
+                _settings.Save();
+            }
+        }
+
+        private void UpdateTrayStatus()
+        {
+            string tooltip = TrayTooltip();
+            if (string.Equals(tooltip, _lastTrayTooltip, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastTrayTooltip = tooltip;
+            _tray.SetTooltip(tooltip);
+        }
+
+        private string TrayTooltip()
+        {
+            int pages = _scannedImages.Count;
+            string pagesText = pages == 1 ? "1 page" : $"{pages} pages";
+            return $"ScanEzi {UpdateService.CurrentVersion} \u00B7 {_buttonListenerStatus} \u00B7 {pagesText}";
         }
 
         private void ApplyLoadedSettings()
@@ -123,6 +274,7 @@ namespace ScanEzi
                 DiscardBlankToggle.IsChecked = _settings.DiscardBlankPages;
                 AutoOrientToggle.IsChecked = _settings.AutoOrientPages;
                 AutoUpdateToggle.IsChecked = _settings.AutoUpdate;
+                TrayToggle.IsChecked = _settings.MinimizeToTray;
 
                 foreach (ComboBoxItem item in SourceComboBox.Items)
                 {
@@ -547,6 +699,10 @@ namespace ScanEzi
                 UpdateNowButton.IsEnabled = false;
                 UpdateStatusText.Text = "Restarting to install the update...";
                 _updateService.ApplyUpdate(_preparedUpdatePath);
+
+                // Close-to-tray would otherwise cancel the shutdown and the installer would
+                // restart while this process still owns the single-instance mutex.
+                _exitRequested = true;
                 Application.Current.Shutdown();
             }
             catch (Exception ex)
@@ -747,6 +903,13 @@ namespace ScanEzi
                         ? $"Scan complete{sides} \u00B7 {acquired.Count} page(s) acquired \u00B7 {blankPages} empty page(s) unticked"
                         : $"Scan complete{sides} \u00B7 {acquired.Count} page(s) acquired";
 
+                    if (!IsVisible)
+                    {
+                        _tray.Notify(
+                            "Scan complete",
+                            $"{acquired.Count} page(s) captured. Open ScanEzi to review and save.");
+                    }
+
                     if (!string.IsNullOrWhiteSpace(outcome.Warning))
                     {
                         ShowBanner(BannerSeverity.Warning, outcome.Warning!);
@@ -761,6 +924,11 @@ namespace ScanEzi
             {
                 StatusText.Text = "Scan failed";
                 ShowBanner(true, ex.Message);
+
+                if (!IsVisible)
+                {
+                    _tray.Notify("Scan failed", ex.Message);
+                }
             }
             finally
             {
@@ -915,6 +1083,7 @@ namespace ScanEzi
             SaveButton.IsEnabled = selected > 0;
             NewScanButton.IsEnabled = _scannedImages.Count > 0;
             UpdateSaveButtonLabel();
+            UpdateTrayStatus();
         }
 
         /// <summary>

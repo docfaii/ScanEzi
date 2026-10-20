@@ -316,6 +316,45 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Background group: the tray icon keeps the scan-button listener alive -->
+                    <Grid Margin="0,18,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="SCAN BUTTON" Style="{StaticResource SectionLabel}"/>
+                        <Border Grid.Column="1" Style="{StaticResource SectionRule}"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                            <TextBlock Text="Keep running in the tray" Style="{StaticResource SettingLabel}"/>
+                            <Grid Style="{StaticResource ToggleRow}">
+                                <ui:ToggleSwitch x:Name="TrayToggle"
+                                                 AutomationProperties.AutomationId="TrayToggle"
+                                                 OnContent="On" OffContent="Off"
+                                                 ToolTip="Closing the window hides ScanEzi to the notification area so the scanner's Scan button keeps starting scans"
+                                                 MinWidth="0" HorizontalAlignment="Left"
+                                                 VerticalAlignment="Center"
+                                                 Checked="TrayToggle_Changed"
+                                                 Unchecked="TrayToggle_Changed"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Listener" Style="{StaticResource SettingLabel}"/>
+                            <TextBlock x:Name="ButtonListenerText" FontSize="12"
+                                       Text="Starting the scan-button listener..."
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                        </StackPanel>
+                    </Grid>
+
                     <!-- Update group: installed version, automatic checks and a manual check -->
                     <Grid Margin="0,18,0,10">
                         <Grid.ColumnDefinitions>
