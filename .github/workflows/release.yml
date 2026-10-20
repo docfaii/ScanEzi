@@ -52,6 +52,9 @@ jobs:
       - name: Restore
         run: dotnet restore ScanEzi.csproj
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
       - name: Publish framework-dependent build
         run: >
           dotnet publish ScanEzi.csproj -c Release -r win-x64 --self-contained false
@@ -66,12 +69,28 @@ jobs:
           -p:InformationalVersion=${{ steps.version.outputs.version }}
           -o publish/self-contained
 
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = @(
+            'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+            'C:\Program Files\Inno Setup 6\ISCC.exe',
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+
+          & $iscc 'installer\ScanEzi.iss' "/DMyAppVersion=${{ steps.version.outputs.version }}" '/DSourceDir=..\publish\self-contained' '/DOutputDir=..\installer\output'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with $LASTEXITCODE" }
+
       - name: Package builds
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
           Compress-Archive -Path 'publish/framework-dependent/*' -DestinationPath "ScanEzi-$version-win-x64.zip" -Force
           Compress-Archive -Path 'publish/self-contained/*' -DestinationPath "ScanEzi-$version-win-x64-self-contained.zip" -Force
+          if (-not (Test-Path "installer/output/ScanEzi-$version-setup.exe")) {
+            throw "The installer was not produced."
+          }
 
       - name: Publish GitHub release
         shell: pwsh
@@ -89,6 +108,12 @@ jobs:
             } else {
               gh release create $tag --title "ScanEzi $version" --generate-notes
             }
+          } elseif (Test-Path $notes) {
+            gh release edit $tag --title "ScanEzi $version" --notes-file $notes
           }
 
-          gh release upload $tag "ScanEzi-$version-win-x64.zip" "ScanEzi-$version-win-x64-self-contained.zip" --clobber
+          gh release upload $tag `
+            "installer/output/ScanEzi-$version-setup.exe" `
+            "ScanEzi-$version-win-x64.zip" `
+            "ScanEzi-$version-win-x64-self-contained.zip" `
+            --clobber

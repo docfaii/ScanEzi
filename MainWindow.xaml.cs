@@ -42,8 +42,12 @@ namespace ScanEzi
             _preferredDuplex = _settings.DefaultDuplex;
             _uiReady = true;
 
-            VersionText.Text = $"ScanEzi {UpdateService.CurrentVersion}";
-            UpdateStatusText.Text = "Updates are checked against GitHub Releases.";
+            VersionText.Text = UpdateService.IsInstalled
+                ? $"ScanEzi {UpdateService.CurrentVersion} (installed)"
+                : $"ScanEzi {UpdateService.CurrentVersion} (portable)";
+            UpdateStatusText.Text = UpdateService.IsInstalled
+                ? "Updates download from GitHub Releases and install automatically."
+                : "Portable copy \u2014 updates download from GitHub Releases.";
 
             Loaded += async (s, e) =>
             {

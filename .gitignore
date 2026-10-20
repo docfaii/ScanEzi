@@ -13,6 +13,7 @@ obj/
 ## Publish output
 publish/
 *.publishsettings
+installer/output/
 
 ## Test artefacts
 TestResults/

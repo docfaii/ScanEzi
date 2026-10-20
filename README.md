@@ -56,7 +56,7 @@ directly to the WIA scanner stack through `Windows.Devices.Scanners`.
 | | |
 |---|---|
 | OS | Windows 10 version 1809 (build 17763) or newer — Windows 11 recommended for the Mica backdrop |
-| Runtime | .NET 8 Desktop Runtime, or use the self-contained build |
+| Runtime | None — the installer and self-contained build bundle everything. The framework-dependent zip needs the .NET 8 Desktop Runtime |
 | Hardware | A connected scanner exposed through WIA |
 
 Auto orientation additionally needs a Windows OCR language pack. Every standard Windows install has
@@ -64,20 +64,24 @@ one; if none is present the feature quietly does nothing and pages are left as s
 
 ## Install
 
-Download the latest release and run `ScanEzi.exe`.
+Download `ScanEzi-<version>-setup.exe` from the latest release and run it. The installer is per-user,
+needs no administrator rights and bundles everything it requires, so there is no .NET prerequisite.
 
-- **Self-contained build** — nothing else to install.
-- **Framework-dependent build** — requires the
+Prefer a portable copy? The release also carries two zips:
+
+- **Self-contained build** — nothing else to install; unzip and run `ScanEzi.exe`.
+- **Framework-dependent build** — smaller, requires the
   [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
 
-There is no installer, and nothing is written outside your user profile.
+ScanEzi writes only to your user profile. The installer registers an uninstaller in Windows settings.
 
 ### Updates
 
 ScanEzi 2.0 and later check GitHub Releases on launch. When a newer release is available, the
-package that matches your installation is downloaded in the background and installed the next time
-you restart. The **UPDATES** section in Settings shows the installed version, lets you turn
-automatic checks on or off, and provides a **Check for updates** button for manual checks.
+package that matches your copy is downloaded in the background and installed the next time you
+restart — installed copies run the new installer silently, portable copies are replaced in place.
+The **UPDATES** section in Settings shows the installed version, lets you turn automatic checks on
+or off, and provides a **Check for updates** button for manual checks.
 
 ## Build from source
 
@@ -105,10 +109,22 @@ machine with no .NET runtime installed.
 
 ### Releasing
 
-Pushing a tag such as `v2.0.0` runs the `Release` workflow, which builds both Windows x64 packages
-and publishes them to GitHub Releases. The workflow uses `docs/release-notes/<tag>.md` when that
-file exists; otherwise it lets GitHub generate the notes. To re-run a release from the Actions tab,
-use the **Release** workflow's manual dispatch and supply the version.
+Pushing a tag such as `v2.0.0` runs the `Release` workflow, which builds the installer and both
+Windows x64 packages and publishes them to GitHub Releases. The workflow uses
+`docs/release-notes/<tag>.md` when that file exists; otherwise it lets GitHub generate the notes. To
+re-run a release from the Actions tab, use the **Release** workflow's manual dispatch and supply the
+version.
+
+The installer comes from `installer\ScanEzi.iss` (Inno Setup) and is compiled from the self-contained
+publish so it has no runtime prerequisite. To build it locally:
+
+```powershell
+dotnet publish ScanEzi.csproj -c Release -r win-x64 --self-contained true -o publish/self-contained
+iscc installer\ScanEzi.iss /DMyAppVersion=2.0.0 /DSourceDir=..\publish\self-contained
+```
+
+The result lands in `installer\output\ScanEzi-<version>-setup.exe`. It installs to
+`%LOCALAPPDATA%\Programs\ScanEzi`.
 
 ## Usage
 
@@ -170,6 +186,8 @@ The whole pass runs on a background thread after the scan, and can be switched o
 | `PdfExportService.cs` | Dependency-free multi-page PDF writer (embeds each page as JPEG) |
 | `AppSettings.cs` | Persisted settings model |
 | `ScanLog.cs` | Diagnostic log writer |
+| `UpdateService.cs` | GitHub release checks, verified downloads, installer/portable update apply |
+| `installer\ScanEzi.iss` | Inno Setup script used by the release workflow |
 
 ## Files and diagnostics
 
@@ -179,6 +197,8 @@ The whole pass runs on a background thread after the scan, and can be switched o
 | `%TEMP%\ScanEzi` | Pages captured during the session |
 | `%LOCALAPPDATA%\ScanEzi\scan.log` | Per-scan diagnostics: device, source, duplex read-back, page count |
 | `%LOCALAPPDATA%\ScanEzi\crash.log` | Unhandled exception details |
+| `%LOCALAPPDATA%\ScanEzi\update.log` | Update helper log — written after the app restarts into a new version |
+| `%LOCALAPPDATA%\Programs\ScanEzi` | Default install folder when installed with the setup program |
 
 ## Notes and known behaviour
 

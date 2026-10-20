@@ -13,6 +13,16 @@ using System.Threading.Tasks;
 
 namespace ScanEzi
 {
+    /// <summary>How an update package is applied.</summary>
+    public enum UpdateAssetKind
+    {
+        /// <summary>A zip of the app files that replaces the folder in place.</summary>
+        Portable,
+
+        /// <summary>The Inno Setup installer, run silently over the existing installation.</summary>
+        Installer
+    }
+
     /// <summary>A newer release found on GitHub.</summary>
     public sealed class UpdateInfo
     {
@@ -23,6 +33,8 @@ namespace ScanEzi
         public Uri DownloadUrl { get; init; } = null!;
         public string? Sha256 { get; init; }
         public long SizeBytes { get; init; }
+        public UpdateAssetKind Kind { get; init; } = UpdateAssetKind.Portable;
+        public bool SelfContained { get; init; }
     }
 
     /// <summary>
@@ -38,6 +50,12 @@ namespace ScanEzi
 
         public static Version CurrentVersion { get; } = ReadCurrentVersion();
 
+        /// <summary>True when this copy was put in place by the Inno Setup installer.</summary>
+        public static bool IsInstalled => IsInstalledIn(AppContext.BaseDirectory);
+
+        internal static bool IsInstalledIn(string directory) =>
+            File.Exists(Path.Combine(directory, "unins000.exe"));
+
         /// <summary>Returns the newest applicable release, or null when this install is current.</summary>
         public async Task<UpdateInfo?> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
         {
@@ -52,8 +70,14 @@ namespace ScanEzi
 
             response.EnsureSuccessStatusCode();
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return ParseLatestRelease(json, CurrentVersion, IsInstalled, IsSelfContainedInstall());
+        }
+
+        /// <summary>Picks the asset that suits this installation from a releases/latest payload.</summary>
+        internal static UpdateInfo? ParseLatestRelease(string json, Version currentVersion, bool installed, bool selfContained)
+        {
+            using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
 
             if (IsTrue(root, "draft") || IsTrue(root, "prerelease"))
@@ -68,7 +92,7 @@ namespace ScanEzi
             }
 
             var version = ParseVersion(tag);
-            if (version == null || version <= CurrentVersion)
+            if (version == null || version <= currentVersion)
             {
                 return null;
             }
@@ -79,9 +103,9 @@ namespace ScanEzi
             }
 
             var notes = root.TryGetProperty("body", out var bodyElement) ? bodyElement.GetString() : null;
-            var wantsSelfContained = IsSelfContainedInstall();
-            UpdateInfo? preferred = null;
-            UpdateInfo? fallback = null;
+            UpdateInfo? installer = null;
+            UpdateInfo? portableMatch = null;
+            UpdateInfo? portableOther = null;
 
             foreach (var asset in assets.EnumerateArray())
             {
@@ -92,8 +116,21 @@ namespace ScanEzi
                     continue;
                 }
 
-                if (!name.StartsWith("ScanEzi-", StringComparison.OrdinalIgnoreCase) ||
-                    !name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                if (!name.StartsWith("ScanEzi-", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                UpdateAssetKind kind;
+                if (name.EndsWith("-setup.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = UpdateAssetKind.Installer;
+                }
+                else if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = UpdateAssetKind.Portable;
+                }
+                else
                 {
                     continue;
                 }
@@ -111,20 +148,30 @@ namespace ScanEzi
                     AssetName = name,
                     DownloadUrl = downloadUrl,
                     Sha256 = ReadDigest(asset),
-                    SizeBytes = asset.TryGetProperty("size", out var sizeElement) && sizeElement.TryGetInt64(out var size) ? size : 0
+                    SizeBytes = asset.TryGetProperty("size", out var sizeElement) && sizeElement.TryGetInt64(out var size) ? size : 0,
+                    Kind = kind,
+                    SelfContained = name.Contains("self-contained", StringComparison.OrdinalIgnoreCase)
                 };
 
-                bool isSelfContained = name.Contains("self-contained", StringComparison.OrdinalIgnoreCase);
-                if (isSelfContained == wantsSelfContained)
+                if (kind == UpdateAssetKind.Installer)
                 {
-                    preferred = info;
-                    break;
+                    installer ??= info;
                 }
-
-                fallback ??= info;
+                else if (info.SelfContained == selfContained)
+                {
+                    portableMatch ??= info;
+                }
+                else
+                {
+                    portableOther ??= info;
+                }
             }
 
-            return preferred ?? fallback;
+            // Installed copies update through the installer so shortcuts and the uninstaller stay
+            // current; portable copies stay portable.
+            return installed
+                ? installer ?? portableMatch ?? portableOther
+                : portableMatch ?? portableOther ?? installer;
         }
 
         /// <summary>Downloads the update and verifies the checksum published with the asset.</summary>
@@ -173,22 +220,12 @@ namespace ScanEzi
         }
 
         /// <summary>
-        /// Extracts the update and starts a detached helper that waits for this process to
-        /// exit, copies the new files over the install folder and relaunches ScanEzi.
+        /// Prepares the downloaded package and starts a detached helper that waits for this
+        /// process to exit, installs or copies the update and relaunches ScanEzi.
         /// </summary>
-        public void ApplyUpdate(string zipPath)
+        public void ApplyUpdate(string packagePath)
         {
             var appDirectory = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            EnsureWritable(appDirectory);
-
-            var staging = Path.Combine(Path.GetTempPath(), "ScanEzi", "staging", Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(staging);
-            ZipFile.ExtractToDirectory(zipPath, staging, overwriteFiles: true);
-
-            if (!File.Exists(Path.Combine(staging, "ScanEzi.exe")))
-            {
-                throw new InvalidDataException("The update package does not contain ScanEzi.exe.");
-            }
 
             var logDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -197,12 +234,59 @@ namespace ScanEzi
             var logPath = Path.Combine(logDirectory, "update.log");
 
             var scriptPath = Path.Combine(Path.GetTempPath(), "ScanEzi", $"apply-update-{Guid.NewGuid():N}.ps1");
-            File.WriteAllText(scriptPath, UpdaterScript, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Directory.CreateDirectory(Path.GetDirectoryName(scriptPath)!);
 
-            var executablePath = Path.Combine(appDirectory, "ScanEzi.exe");
+            if (packagePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(packagePath))
+                {
+                    throw new FileNotFoundException("The downloaded installer is missing.", packagePath);
+                }
+
+                // Pin the current folder only when it can be written; otherwise let the installer
+                // fall back to its per-user default.
+                var targetDirectory = IsWritable(appDirectory) ? appDirectory : string.Empty;
+                var executablePath = string.IsNullOrEmpty(targetDirectory)
+                    ? Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "Programs",
+                        "ScanEzi",
+                        "ScanEzi.exe")
+                    : Path.Combine(targetDirectory, "ScanEzi.exe");
+
+                File.WriteAllText(scriptPath, InstallerUpdaterScript, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                StartHelper(
+                    scriptPath,
+                    executablePath,
+                    logPath,
+                    $"-TargetDir \"{targetDirectory}\" -InstallerPath \"{packagePath}\"");
+                return;
+            }
+
+            EnsureWritable(appDirectory);
+
+            var staging = Path.Combine(Path.GetTempPath(), "ScanEzi", "staging", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(staging);
+            ZipFile.ExtractToDirectory(packagePath, staging, overwriteFiles: true);
+
+            if (!File.Exists(Path.Combine(staging, "ScanEzi.exe")))
+            {
+                throw new InvalidDataException("The update package does not contain ScanEzi.exe.");
+            }
+
+            File.WriteAllText(scriptPath, UpdaterScript, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            StartHelper(
+                scriptPath,
+                Path.Combine(appDirectory, "ScanEzi.exe"),
+                logPath,
+                $"-TargetDir \"{appDirectory}\" -SourceDir \"{staging}\"");
+        }
+
+        private static void StartHelper(string scriptPath, string executablePath, string logPath, string modeArguments)
+        {
             var arguments =
                 $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{scriptPath}\" " +
-                $"-WaitPid {Environment.ProcessId} -SourceDir \"{staging}\" -TargetDir \"{appDirectory}\" " +
+                $"-WaitPid {Environment.ProcessId} {modeArguments} " +
                 $"-ExePath \"{executablePath}\" -LogPath \"{logPath}\"";
 
             var startInfo = new ProcessStartInfo("powershell.exe", arguments)
@@ -315,7 +399,7 @@ namespace ScanEzi
             }
         }
 
-        private static void EnsureWritable(string appDirectory)
+        private static bool IsWritable(string appDirectory)
         {
             var probe = Path.Combine(appDirectory, $".scanezi-update-{Guid.NewGuid():N}.tmp");
             try
@@ -327,14 +411,24 @@ namespace ScanEzi
                     FileShare.None,
                     bufferSize: 1,
                     FileOptions.DeleteOnClose);
+                return true;
             }
-            catch (Exception ex)
+            catch
             {
-                throw new IOException(
-                    "ScanEzi cannot update itself because its folder is not writable. " +
-                    "Download the new version from the releases page instead. " + ex.Message,
-                    ex);
+                return false;
             }
+        }
+
+        private static void EnsureWritable(string appDirectory)
+        {
+            if (IsWritable(appDirectory))
+            {
+                return;
+            }
+
+            throw new IOException(
+                "ScanEzi cannot update itself because its folder is not writable. " +
+                "Download the new version from the releases page instead.");
         }
 
         private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
@@ -406,6 +500,61 @@ if ($applied) {
 Start-Sleep -Seconds 2
 try { [System.IO.Directory]::Delete($SourceDir, $true) } catch { }
 try { [System.IO.File]::Delete($PSCommandPath) } catch { }
+""";
+
+        private const string InstallerUpdaterScript = """
+param(
+    [Parameter(Mandatory = $true)][int]$WaitPid,
+    [Parameter(Mandatory = $true)][string]$InstallerPath,
+    [Parameter(Mandatory = $true)][string]$ExePath,
+    [Parameter(Mandatory = $true)][string]$LogPath,
+    [string]$TargetDir = ''
+)
+
+$ErrorActionPreference = 'Stop'
+
+function Write-UpdateLog([string]$Message) {
+    try {
+        $folder = Split-Path -Parent $LogPath
+        if ($folder -and -not (Test-Path -LiteralPath $folder)) {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        }
+        Add-Content -LiteralPath $LogPath -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
+    } catch { }
+}
+
+Write-UpdateLog "Installer updater started; waiting for process $WaitPid."
+try { Wait-Process -Id $WaitPid -Timeout 60 -ErrorAction SilentlyContinue } catch { }
+Start-Sleep -Milliseconds 800
+
+$arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS'
+if ($TargetDir) { $arguments = $arguments + ' /DIR="' + $TargetDir + '"' }
+
+$installed = $false
+try {
+    Write-UpdateLog "Running $InstallerPath $arguments"
+    $process = Start-Process -FilePath $InstallerPath -ArgumentList $arguments -Wait -PassThru
+    if ($process.ExitCode -eq 0) {
+        $installed = $true
+        Write-UpdateLog 'Installer finished successfully.'
+    } else {
+        Write-UpdateLog "Installer exited with code $($process.ExitCode)."
+    }
+} catch {
+    Write-UpdateLog "Installer failed: $($_.Exception.Message)"
+}
+
+if (Test-Path -LiteralPath $ExePath) {
+    Start-Process -FilePath $ExePath -WorkingDirectory (Split-Path -Parent $ExePath)
+    Write-UpdateLog 'Relaunched ScanEzi.'
+} else {
+    Write-UpdateLog "ScanEzi was not found at $ExePath after the update."
+}
+
+Start-Sleep -Seconds 2
+try { [System.IO.File]::Delete($InstallerPath) } catch { }
+try { [System.IO.File]::Delete($PSCommandPath) } catch { }
+if (-not $installed) { Write-UpdateLog 'Update did not complete; the previous version is still in place.' }
 """;
     }
 }
