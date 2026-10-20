@@ -17,6 +17,7 @@ namespace ScanEzi
     {
         private readonly ObservableCollection<ScannedImage> _scannedImages = new();
         private readonly ScannerService _scannerService = new();
+        private readonly ScannerButtonService _buttonService = new();
         private readonly ImageProcessor _imageProcessor = new();
         private AppSettings _settings;
         private IReadOnlyList<DeviceInformation> _availableScanners = new List<DeviceInformation>();
@@ -41,10 +42,40 @@ namespace ScanEzi
             {
                 ApplyLoadedSettings();
                 await RefreshScannersAsync();
+
+                // Listen for the physical Scan button. The service marshals the callback
+                // onto the UI thread before invoking the handler.
+                _buttonService.StatusChanged += OnButtonServiceStatusChanged;
+                _buttonService.Initialize(Dispatcher, OnHardwareScanButtonPressed);
+                await _buttonService.StartAsync();
+            };
+
+            Closed += (s, e) =>
+            {
+                _buttonService.StatusChanged -= OnButtonServiceStatusChanged;
+                _buttonService.Dispose();
             };
 
             // The gallery starts empty, so the save action stays greyed out until a page lands.
             UpdateSaveButtonState();
+        }
+
+        private void OnHardwareScanButtonPressed()
+        {
+            if (QuickScanButton.IsEnabled)
+            {
+                ScanButton_Click(QuickScanButton, new RoutedEventArgs());
+            }
+        }
+
+        private void OnButtonServiceStatusChanged(string message)
+        {
+            // A successful registration is not worth replacing the ready/idle status text;
+            // only a failure needs to reach the user.
+            if (_buttonService.LastError != null)
+            {
+                StatusText.Text = message;
+            }
         }
 
         private void ApplyLoadedSettings()
